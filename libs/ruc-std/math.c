@@ -47,12 +47,15 @@ float powf(float __base, float __power)
 }
 
 // Uses Taylor series to find approximate value.
+// Precision: 1e-4
 float cos(float __x) 
 {
 	// TODO: Well, it's not too fast. Probably change to something faster.
-	while (__x > __PI)
-		__x -= 2 * __PI;
-	int __x1 = __x * __x;
+	if (__x < 0)
+		__x = -__x;
+	while (__x < __pi)
+		__x += 2 * __PI;
+	float __x1 = __x * __x;
 	return 1.0 - ((__x1 / 2.0) * (1.0 - (__x1 / 12.0) * (1.0 - (__x1 / 30.0) * (1.0 - (__x1 / 56.0) * (1.0 - (__x1 / 90.0) * (1.0 - (__x1 / 132.0)))))));
 }
 float sin(float __x) 
