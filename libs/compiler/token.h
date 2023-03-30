@@ -44,6 +44,7 @@ typedef enum TOKEN
 	TK_DOUBLE,						/**< 'double' keyword */
 	TK_ELSE,						/**< 'else' keyword */
 	TK_ENUM,						/**< 'enum' keyword */
+	TK_EXTERN,						/**< 'extern' keyword */
 	TK_FALSE,						/**< 'false' keyword */
 	TK_FILE,						/**< 'file' keyword */
 	TK_FLOAT,						/**< 'float' keyword */

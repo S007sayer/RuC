@@ -860,42 +860,6 @@ static item_t parse_type_specifier(parser *const prs, const node *const parent)
 			return parse_enum_specifier(prs, parent);
 		}
 
-		case TK_TYPEDEF:
-		{
-			consume_token(prs);
-			item_t type = parse_type_specifier(prs, parent);
-			if (type_is_undefined(type))
-			{
-				skip_until(prs, TK_SEMICOLON);
-				return TYPE_UNDEFINED;
-			}
-			if (token_is(&prs->tk, TK_STAR))
-			{
-				consume_token(prs);
-				type = type_pointer(prs->sx, type);
-			}
-			if (token_is(&prs->tk, TK_IDENTIFIER))
-			{
-				const size_t repr = token_get_ident_name(&prs->tk);
-				consume_token(prs);
-				to_identab(prs, repr, 1000, type);
-				prs->was_type_def = true;
-				if (token_is_not(&prs->tk, TK_SEMICOLON))
-				{
-					parser_error(prs, expected_semi_after_decl);
-					return TYPE_UNDEFINED;
-
-				}
-				return type;
-			}
-			else
-			{
-				parser_error(prs, typedef_requires_a_name);
-				skip_until(prs, TK_SEMICOLON);
-				return TYPE_UNDEFINED;
-			}
-		}
-
 		default:
 			parser_error(prs, not_decl);
 			return TYPE_UNDEFINED;
@@ -2190,7 +2154,7 @@ static void parse_function_declaration(parser *const prs, node *const parent, co
  *	@param	prs			Parser
  *	@param	root		Root node in AST
  */
-static void parse_external_definition(parser *const prs, node *const root)
+static void parse_common_definition(parser *const prs, node *const root)
 {
 	prs->was_type_def = 0;
 	prs->func_def = 3;
@@ -2241,6 +2205,83 @@ static void parse_external_definition(parser *const prs, node *const root)
 		expect_and_consume(prs, TK_SEMICOLON, expected_semi_after_decl);
 	}
 }
+static void parse_typedef_definition(parser *const prs, node *const root)
+{
+	prs->was_type_def = 0;
+	prs->func_def = 3;
+
+	consume_token(prs);
+
+	item_t type = parse_type_specifier(prs, root);
+	if (type_is_undefined(type))
+	{
+		skip_until(prs, TK_SEMICOLON);
+		return;
+	}
+	if (token_is(&prs->tk, TK_STAR))
+	{
+		consume_token(prs);
+		type = type_pointer(prs->sx, type);
+	}
+	if (token_is(&prs->tk, TK_IDENTIFIER))
+	{
+		const size_t repr = token_get_ident_name(&prs->tk);
+		consume_token(prs);
+		to_identab(prs, repr, 1000, type);
+		prs->was_type_def = true;
+		if (token_is_not(&prs->tk, TK_SEMICOLON))
+		{
+			parser_error(prs, expected_semi_after_decl);
+		}
+	}
+	else
+	{
+		parser_error(prs, typedef_requires_a_name);
+		skip_until(prs, TK_SEMICOLON);
+	}
+	try_consume_token(prs, TK_SEMICOLON);
+}
+static void parse_extern_definition(parser *const prs, node *const root)
+{
+	consume_token(prs);
+
+	node nd = node_add_child(root, OP_EXTERN_DEF);
+
+	item_t group_type = parse_type_specifier(prs, &nd);
+	item_t type = group_type;
+
+	if (token_is(&prs->tk, TK_STAR))
+	{
+		consume_token(prs);
+		type = type_pointer(prs->sx, group_type);
+	}
+	if (peek_token(prs) == TK_L_PAREN)
+	{
+		parse_function_declaration(prs, &nd, type);
+	}
+	else
+	{
+		// ERROR;
+		system_error(node_unexpected);
+	}
+	try_consume_token(prs, TK_SEMICOLON);
+}
+
+static void parse_definition(parser *const prs, node *const root)
+{
+	if (token_is(&prs->tk, TK_EXTERN))
+	{
+		//parse_extern_definition(prs, root);
+	}
+	else if (token_is(&prs->tk, TK_TYPEDEF))
+	{
+		parse_typedef_definition(prs, root);
+	}
+	else
+	{
+		parse_common_definition(prs, root);
+	}
+}
 
 /**
  *	Parse translation unit
@@ -2252,7 +2293,7 @@ static void parse_translation_unit(parser *const prs, node *const root)
 {
 	do
 	{
-		parse_external_definition(prs, root);
+		parse_definition(prs, root);
 	} while (token_is_not(&prs->tk, TK_EOF));
 }
 

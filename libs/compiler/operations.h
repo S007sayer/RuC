@@ -151,6 +151,7 @@ typedef enum OPERATION
 	OP_DECL_MEMBER,			/**< Member declaration node */
 	OP_DECL_STRUCT,			/**< Struct declaration node */
 	OP_FUNC_DEF,			/**< Function definition node */
+	OP_EXTERN_DEF,			/**< Extern definition node */
 
 	// For internal use
 	OP_EMPTY_BOUND,			/**< Empty array size expression */

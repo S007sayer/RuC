@@ -60,6 +60,7 @@ static inline void repr_init(map *const reprtab)
 	repr_add_keyword(reprtab, U"long", U"длин", TK_LONG);
 	repr_add_keyword(reprtab, U"struct", U"структура", TK_STRUCT);
 	repr_add_keyword(reprtab, U"enum", U"перечисление", TK_ENUM);
+	repr_add_keyword(reprtab, U"extern", U"внешний", TK_EXTERN);
 	repr_add_keyword(reprtab, U"void", U"пусто", TK_VOID);
 	repr_add_keyword(reprtab, U"file", U"файл", TK_FILE);
 	repr_add_keyword(reprtab, U"typedef", U"типопр", TK_TYPEDEF);
