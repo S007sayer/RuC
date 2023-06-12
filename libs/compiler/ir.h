@@ -156,7 +156,8 @@ typedef enum label_kind
 	LABEL_KIND_AND,
 	LABEL_KIND_OR,
 	LABEL_KIND_FUNCEND,
-	LABEL_KIND_STRING
+	LABEL_KIND_STRING,
+	LABEL_KIND_CASE
 } label_kind;
 
 /**

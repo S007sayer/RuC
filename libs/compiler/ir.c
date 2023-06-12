@@ -812,7 +812,8 @@ typedef enum ir_label_kind
 	IR_LABEL_KIND_BEGIN_CYCLE,
 	IR_LABEL_KIND_NEXT,
 	IR_LABEL_KIND_AND,
-	IR_LABEL_KIND_OR
+	IR_LABEL_KIND_OR,
+	IR_LABEL_KIND_CASE
 } ir_label_kind;
 
 typedef node ir_label;
@@ -846,6 +847,20 @@ static ir_label ir_label_load(const vector *const tree, const item_t id)
 	return node_load(tree, id);
 }
 
+typedef node ir_block;
+
+static ir_basic_block create_ir_block(const node *const nd)
+{
+	ir_block_ block = node_add_child(nd, 0);
+	return block;
+}
+
+static size_t ir_block_get_instr_count(const ir_block *const block) 
+{
+	return node_get_amount(block);
+} 
+
+
 // Функции.
 
 typedef node ir_function;
@@ -867,13 +882,9 @@ static ir_function create_ir_function(const node *const nd, const item_t id, con
 	return function;
 }
 
-static size_t ir_function_get_instr_count(const ir_function *const function)
+static ir_block ir_function_get_block(const ir_function *const function) 
 {
-	return node_get_amount(function);
-}
-static ir_instr ir_function_index_instr(const ir_function *const function, size_t idx)
-{
-	return node_get_child(function, idx);
+	return node_get_child(function, 0);
 }
 
 static item_t ir_function_get_id(const ir_function *const function)
@@ -1420,6 +1431,12 @@ static void ir_build_ret(ir_builder *const builder, const item_t value)
 	ir_build_instr(builder, IR_IC_RET, value, IR_VALUE_VOID, IR_VALUE_VOID);
 }
 
+static void ir_build_block(ir_builder *const builder)
+{
+	ir_function function = ir_get_current_function(builder);
+	create_ir_block(&function);
+}
+
 static void ir_build_function_definition(ir_builder *const builder, const item_t id, const item_t type)
 {
 	ir_function function = create_ir_function(&builder->module->functions_root, id, type);
@@ -1665,6 +1682,9 @@ static void ir_dump_label_kind(const ir_builder *const builder, const ir_label_k
 			break;
 		case IR_LABEL_KIND_OR:
 			ir_dumpf("OR");
+			break;
+		case IR_LABEL_KIND_CASE:
+			ir_dumpf("CASE");
 			break;
 		default:
 			unreachable();
@@ -1993,7 +2013,7 @@ static void ir_dump_function(const ir_builder *const builder, const ir_function 
 	ir_dumpf("\n");
 
 	ir_dumpf("{\n");
-	for (size_t i = 0; i < ir_function_get_instr_count(function); i++)
+	for (size_t i = 0; i < ir_block_get_instr_count(ir_function_get_block(function)); i++)
 	{
 		const ir_instr instr = ir_function_index_instr(function, i);
 		ir_dump_instr(builder, &instr);
@@ -2027,7 +2047,7 @@ void ir_dump(const ir_builder *const builder)
 // Генерация выражений.
 
 static item_t ir_emit_expression(ir_builder *const builder, const node *const nd);
-static item_t ir_emit_binary_operation(ir_builder *const builder, const item_t lhs, const item_t rhs, const binary_t operator);
+static item_t ir_build_binary_operation(ir_builder *const builder, const item_t lhs, const item_t rhs, const binary_t operator);
 static item_t ir_emit_lvalue(ir_builder *const builder, const node *const nd);
 
 static item_t ir_emit_identifier_lvalue(ir_builder* const builder, const node *const nd)
@@ -2230,7 +2250,7 @@ static item_t ir_emit_increment_expression(ir_builder *const builder, const node
 	{
 		const item_t operand_rvalue = ir_build_load(builder, operand_lvalue);
 		const item_t second_value = ir_build_imm_one(builder);
-		const item_t incremented_value = ir_emit_binary_operation(builder, operand_rvalue, second_value, (is_inc) ? BIN_ADD : BIN_SUB);
+		const item_t incremented_value = ir_build_binary_operation(builder, operand_rvalue, second_value, (is_inc) ? BIN_ADD : BIN_SUB);
 		ir_free_value(builder, operand_rvalue);
 		ir_free_value(builder, second_value);
 
@@ -2241,7 +2261,7 @@ static item_t ir_emit_increment_expression(ir_builder *const builder, const node
 
 	const item_t operand_rvalue = ir_build_load(builder, operand_lvalue);
 	const item_t second_value = ir_build_imm_one(builder);
-	const item_t incremented_value = ir_emit_binary_operation(builder, operand_rvalue, second_value, (is_inc) ? BIN_ADD : BIN_SUB);
+	const item_t incremented_value = ir_build_binary_operation(builder, operand_rvalue, second_value, (is_inc) ? BIN_ADD : BIN_SUB);
 	ir_free_value(builder, second_value);
 
 	ir_build_store(builder, incremented_value, operand_lvalue);
@@ -2280,7 +2300,7 @@ static item_t ir_emit_unary_expression(ir_builder *const builder, const node *co
 			const node operand = expression_unary_get_operand(nd);
 			const item_t operand_value = ir_emit_expression(builder, &operand);
 			const item_t minus_one_value = ir_build_imm_minus_one(builder);
-			const item_t res_value = ir_emit_binary_operation(builder, operand_value, minus_one_value, BIN_MUL);
+			const item_t res_value = ir_build_binary_operation(builder, operand_value, minus_one_value, BIN_MUL);
 			ir_free_value(builder, minus_one_value);
 			ir_free_value(builder, operand_value);
 			return res_value;
@@ -2290,7 +2310,7 @@ static item_t ir_emit_unary_expression(ir_builder *const builder, const node *co
 			const node operand = expression_unary_get_operand(nd);
 			const item_t operand_value = ir_emit_expression(builder, &operand);
 			const item_t minus_one_value = ir_build_imm_minus_one(builder);
-			const item_t res_value = ir_emit_binary_operation(builder, operand_value, minus_one_value, BIN_XOR);
+			const item_t res_value = ir_build_binary_operation(builder, operand_value, minus_one_value, BIN_XOR);
 			ir_free_value(builder, minus_one_value);
 			ir_free_value(builder, operand_value);
 			return res_value;
@@ -2352,7 +2372,7 @@ static item_t ir_emit_unary_expression(ir_builder *const builder, const node *co
 	}
 }
 
-static item_t ir_emit_binary_operation(ir_builder *const builder, const item_t lhs, const item_t rhs, const binary_t operator)
+static item_t ir_build_binary_operation(ir_builder *const builder, const item_t lhs, const item_t rhs, const binary_t operator)
 {
 	assert(operator != BIN_LOG_AND);
 	assert(operator != BIN_LOG_OR);
@@ -2428,8 +2448,6 @@ static item_t ir_emit_binary_operation(ir_builder *const builder, const item_t l
 				const item_t end_label = ir_add_label(builder, IR_LABEL_KIND_END);
 
 				ir_build_jmplt(builder, else_label, lhs, rhs);
-				ir_free_value(builder, lhs);
-				ir_free_value(builder, rhs);
 
 				const item_t zero_value = ir_build_imm_zero(builder);
 				ir_build_move(builder, zero_value, res);
@@ -2458,8 +2476,6 @@ static item_t ir_emit_binary_operation(ir_builder *const builder, const item_t l
 				const item_t end_label = ir_add_label(builder, IR_LABEL_KIND_END);
 
 				ir_build_jmple(builder, else_label, lhs, rhs);
-				ir_free_value(builder, lhs);
-				ir_free_value(builder, rhs);
 
 				const item_t one_value = ir_build_imm_one(builder);
 				ir_build_move(builder, one_value, res);
@@ -2489,8 +2505,6 @@ static item_t ir_emit_binary_operation(ir_builder *const builder, const item_t l
 				const item_t end_label = ir_add_label(builder, IR_LABEL_KIND_END);
 
 				ir_build_jmple(builder, else_label, lhs, rhs);
-				ir_free_value(builder, lhs);
-				ir_free_value(builder, rhs);
 
 				const item_t zero_value = ir_build_imm_zero(builder);
 				ir_build_move(builder, zero_value, res);
@@ -2519,8 +2533,6 @@ static item_t ir_emit_binary_operation(ir_builder *const builder, const item_t l
 				const item_t end_label = ir_add_label(builder, IR_LABEL_KIND_END);
 
 				ir_build_jmplt(builder, else_label, lhs, rhs);
-				ir_free_value(builder, lhs);
-				ir_free_value(builder, rhs);
 
 				const item_t one_value = ir_build_imm_one(builder);
 				ir_build_move(builder, one_value, res);
@@ -2564,9 +2576,6 @@ static item_t ir_emit_binary_operation(ir_builder *const builder, const item_t l
 
 				ir_build_label(builder, end_label);
 
-				ir_free_value(builder, lhs);
-				ir_free_value(builder, rhs);
-
 				return res;
 			}
 			unimplemented();
@@ -2594,9 +2603,6 @@ static item_t ir_emit_binary_operation(ir_builder *const builder, const item_t l
 				ir_free_value(builder, zero_value);
 
 				ir_build_label(builder, end_label);
-
-				ir_free_value(builder, lhs);
-				ir_free_value(builder, rhs);
 
 				return res;
 			}
@@ -2695,7 +2701,7 @@ static item_t ir_emit_binary_expression(ir_builder *const builder, const node *c
 		{
 			const item_t lhs_value = ir_emit_expression(builder, &lhs);
 			const item_t rhs_value = ir_emit_expression(builder, &rhs);
-			const item_t res_value = ir_emit_binary_operation(builder, lhs_value, rhs_value, operator);
+			const item_t res_value = ir_build_binary_operation(builder, lhs_value, rhs_value, operator);
 			ir_free_value(builder, lhs_value);
 			ir_free_value(builder, rhs_value);
 			return res_value;
@@ -2801,7 +2807,7 @@ static item_t ir_emit_assignment_expression(ir_builder *const builder, const nod
 	// '+=', '-=', '*=' etc.
 	const binary_t convient_operator = ir_get_convient_operator(operator);
 	const item_t lhs_rvalue = ir_build_load(builder, lhs_lvalue);
-	const item_t res_rvalue = ir_emit_binary_operation(builder, lhs_rvalue, rhs_rvalue, convient_operator);
+	const item_t res_rvalue = ir_build_binary_operation(builder, lhs_rvalue, rhs_rvalue, convient_operator);
 
 	ir_build_store(builder, res_rvalue, lhs_lvalue);
 
@@ -2988,20 +2994,20 @@ static void ir_emit_declaration_statement(ir_builder *const builder, const node 
 	}
 }
 
-static void ir_emit_case_statement(ir_builder *const builder, const node *const nd, const size_t label_num)
+static void ir_emit_case_statement(ir_builder *const builder, const node *const nd, const item_t label)
 {
-	(void) builder;
-	(void) nd;
-	(void) label_num;
-	unimplemented();
+	ir_build_label(builder, label);
+
+	const node substmt = statement_case_get_substmt(nd);
+	ir_emit_statement(builder, &substmt);
 }
 
-static void ir_emit_default_statement(ir_builder *const builder, const node *const nd, const size_t label_num)
+static void ir_emit_default_statement(ir_builder *const builder, const node *const nd, const item_t label)
 {
-	(void) builder;
-	(void) nd;
-	(void) label_num;
-	unimplemented();
+	ir_build_label(builder, label);
+
+	const node substmt = statement_case_get_substmt(nd);
+	ir_emit_statement(builder, &substmt);
 }
 
 static void ir_emit_compound_statement(ir_builder *const builder, const node *const nd)
@@ -3016,9 +3022,75 @@ static void ir_emit_compound_statement(ir_builder *const builder, const node *co
 
 static void ir_emit_switch_statement(ir_builder *const builder, const node *const nd)
 {
-	(void) builder;
-	(void) nd;
-	unimplemented();
+	const node condition = statement_switch_get_condition(nd);
+	const item_t condtion = ir_emit_expression(builder, &condition);
+
+	item_t default_index = -1;
+
+	// Размещение меток согласно условиям
+	const node body = statement_switch_get_body(nd);
+	const size_t amount = statement_compound_get_size(&body);	// Гарантируется compound statement
+	for (size_t i = 0; i < amount; i++)
+	{
+		const node substmt = statement_compound_get_substmt(&body, i);
+		const item_t substmt_class = statement_get_class(&substmt);
+
+		if (substmt_class == STMT_CASE)
+		{
+			const item_t case_label = ir_add_label(builder, IR_LABEL_KIND_CASE);
+
+			const node case_expr = statement_case_get_expression(&substmt);
+			const item_t case_expr_value = ir_emit_literal_expression(builder, &case_expr);
+
+			// Пользуемся тем, что это integer type
+			const item_t result_value = ir_build_binary_operation(enc, &result_rvalue, &condition_rvalue, &case_expr_rvalue, BIN_EQ);
+			ir_free_value(builder, case_expr_value);
+			ir_build_jmpnz(builder, case_label, result_rvalue, label_case);
+
+			ir_free_value(enc, result_value);
+		}
+		else if (substmt_class == STMT_DEFAULT)
+		{
+			// Только получаем индекс, а размещение прыжка по нужной метке будет после всех case'ов
+			default_index = enc->case_label_num++;
+		}
+	}
+
+	if (default_index != -1)
+	{
+		const label label_default = { .kind = L_CASE, .num = (size_t)default_index };
+		ir_build_jmp(builder, &default_label);
+	}
+	else
+	{
+		// Нет default => можем попасть в ситуацию, когда требуется пропустить все case'ы
+		ir_build_jmp(builder, &builder->label_break);
+	}
+
+	ir_free_value(builder, condition);
+
+	// Размещение тел всех case и default statements
+	for (size_t i = 0; i < amount; i++)
+	{
+		const node substmt = statement_compound_get_substmt(&body, i);
+		const item_t substmt_class = statement_get_class(&substmt);
+
+		if (substmt_class == STMT_CASE)
+		{
+			ir_emit_case_statement(builder, &substmt, curr_case_label_num++);
+		}
+		else if (substmt_class == STMT_DEFAULT)
+		{
+			ir_emit_default_statement(builder, &substmt, curr_case_label_num++);
+		}
+		else
+		{
+			ir_emit_statement(enc, &substmt);
+		}
+	}
+
+	emit_label_declaration(enc, &enc->break_label);
+	builder->break_label = old_break_label;
 }
 
 static void ir_emit_if_statement(ir_builder *const builder, const node *const nd) 
